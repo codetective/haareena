@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePollar } from "@pollar/react";
 
-const WS_URL = import.meta.env.VITE_WS_URL ?? `ws://${location.hostname}:8787`;
+const WS_PROTOCOL = location.protocol === "https:" ? "wss:" : "ws:";
+const WS_URL = import.meta.env.VITE_WS_URL ?? `${WS_PROTOCOL}//${location.hostname}:8787`;
 const EXPLORER = "https://stellar.expert/explorer/testnet/tx/";
 const ADDRESS = /^[GC][A-Z2-7]{55}$/;
+const MAX_POT_ID = 0xffff_ffff;
 const isHostUrl = () => location.hash === "#host";
 const xlm = (stroops) => (Number(stroops) / 1e7).toLocaleString(undefined, { maximumFractionDigits: 2 });
 const short = (a) => `${a.slice(0, 4)}…${a.slice(-4)}`;
@@ -70,7 +72,7 @@ function useNow(active) {
   return now;
 }
 
-export default function App({ pollar }) {
+export default function App({ pollar, pollarNotice }) {
   const [isHost, setIsHost] = useState(isHostUrl);
   useEffect(() => {
     const f = () => setIsHost(isHostUrl());
@@ -106,7 +108,7 @@ export default function App({ pollar }) {
       ) : game.state === "idle" ? (
         <Status connected={connected} waitingForHost />
       ) : (
-        <Player pollar={pollar} game={game} send={send} joined={joined} error={error} />
+        <Player pollar={pollar} pollarNotice={pollarNotice} game={game} send={send} joined={joined} error={error} />
       )}
       <footer className="app-footer">A quick quiz arena on Stellar testnet</footer>
     </main>
@@ -114,7 +116,7 @@ export default function App({ pollar }) {
 }
 
 // ---------- player ----------
-function Player({ pollar, game, send, joined, error }) {
+function Player({ pollar, pollarNotice, game, send, joined, error }) {
   const [name, setName] = useState(joined.current?.name ?? "");
   const [address, setAddress] = useState(joined.current?.address ?? "");
   const [picked, setPicked] = useState(null);
@@ -149,7 +151,7 @@ function Player({ pollar, game, send, joined, error }) {
                 : "Only players who already joined can reconnect after a round starts."}
             </p>
           </div>
-          {pollar && <PollarLogin onAddress={onAddress} />}
+          {pollar ? <PollarLogin onAddress={onAddress} /> : pollarNotice && <p className="muted wallet-note">{pollarNotice}</p>}
           <label>
             Your name
             <input value={name} onChange={(e) => setName(e.target.value)} maxLength={24} placeholder="Ada" autoComplete="nickname" />
@@ -196,16 +198,33 @@ function Player({ pollar, game, send, joined, error }) {
 
 function PollarLogin({ onAddress }) {
   const { isAuthenticated, wallet, login } = usePollar();
+  const [loginPending, setLoginPending] = useState(false);
+  const [loginError, setLoginError] = useState("");
   useEffect(() => {
     if (wallet?.address) onAddress(wallet.address);
   }, [wallet?.address, onAddress]);
+  const continueWithGoogle = async () => {
+    setLoginPending(true);
+    setLoginError("");
+    try {
+      await login({ provider: "google" });
+    } catch {
+      setLoginError("Google sign-in failed. You can still paste a Stellar address below.");
+    } finally {
+      setLoginPending(false);
+    }
+  };
   if (!isAuthenticated)
     return (
-      <button type="button" className="secondary" onClick={() => login({ provider: "google" })}>
-        Continue with Google
-      </button>
+      <div className="stack compact-stack">
+        <button type="button" className="secondary" onClick={continueWithGoogle} disabled={loginPending}>
+          {loginPending ? "Opening Google sign-in…" : "Continue with Google"}
+        </button>
+        <ErrorLine error={loginError} />
+      </div>
     );
   if (!wallet || wallet.provisioning === "CREATING") return <p className="muted">Creating your wallet…</p>;
+  if (!wallet.address) return <p className="muted" role="status">Wallet setup is incomplete. Paste a Stellar address below to continue.</p>;
   return <p className="muted">Wallet ready: {short(wallet.address)}</p>;
 }
 
@@ -230,9 +249,9 @@ function Host({ game, send, hosting, playing, error }) {
         </label>
         <label>
           Pot id
-          <input value={potId} onChange={(e) => setPotId(e.target.value)} inputMode="numeric" placeholder="2" />
+          <input value={potId} onChange={(e) => setPotId(e.target.value)} inputMode="numeric" maxLength={10} placeholder="2" />
         </label>
-        <button disabled={playing || !token.trim() || !/^\d+$/.test(potId)}>
+        <button disabled={playing || !token.trim() || !/^\d+$/.test(potId) || Number(potId) > MAX_POT_ID}>
           {playing ? "You're playing in this tab. Use another tab to host." : "Open game"}
         </button>
         <ErrorLine error={error} />
@@ -256,9 +275,10 @@ function Host({ game, send, hosting, playing, error }) {
           <button disabled={!game.players.length} onClick={() => send({ t: "start" })}>
             Start quiz ({game.players.length} {game.players.length === 1 ? "player" : "players"})
           </button>
-          <button className="secondary" onClick={leave}>
-            Put the pot back
-          </button>
+          <button className="secondary" onClick={leave}>Cancel this round</button>
+          <p className="muted host-note">
+            This closes the lobby only. The pot stays locked until its deadline; the sponsor can refund it after.
+          </p>
         </div>
       )}
       {(game.state === "question" || game.state === "reveal") && <Question game={game} now={now} />}
@@ -323,7 +343,7 @@ function Question({ game, now, picked, onPick }) {
   if (!q) return null;
   const left = Math.max(0, Math.ceil((q.endsAt - now) / 1000));
   return (
-    <div className="card stack">
+    <div className="card stack question-card">
       <div className="row">
         <span className="muted">
           Question {q.i + 1} of {q.total}

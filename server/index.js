@@ -46,12 +46,10 @@ const game = {
   payout: null, // { tx, winners }
 };
 let hostWs = null;
+const clients = new Set();
 
 const send = (ws, msg) => ws?.readyState === 1 && ws.send(JSON.stringify(msg));
-const broadcast = (msg) => {
-  send(hostWs, msg);
-  for (const p of game.players.values()) send(p.ws, msg);
-};
+const broadcast = (msg) => clients.forEach((ws) => send(ws, msg));
 const leaderboard = () =>
   [...game.players.values()]
     .map(({ name, address, score }) => ({ name, address, score }))
@@ -102,7 +100,9 @@ async function onHost(ws, { token, potId }) {
     ws.role = "host";
     return send(ws, snapshot());
   }
-  if (!Number.isInteger(potId) || potId < 0) throw new Error("pot id must be a whole number");
+  if (!Number.isSafeInteger(potId) || potId < 0 || potId > 0xffff_ffff) {
+    throw new Error("pot id must be an integer between 0 and 4294967295");
+  }
 
   // Same checks `pay` makes on chain, so the payout can't fail for these reasons later.
   const pot = JSON.parse((await invoke("get", ["--id", String(potId)], { send: false })).stdout.split("\n").pop());
@@ -180,6 +180,7 @@ async function onPay() {
 // ---- server ----
 const wss = new WebSocketServer({ port: PORT, maxPayload: 4096 });
 wss.on("connection", (ws) => {
+  clients.add(ws);
   send(ws, snapshot());
   ws.on("message", async (raw) => {
     try {
@@ -200,11 +201,12 @@ wss.on("connection", (ws) => {
         case "leave":
           // Only before the quiz starts. The pot is untouched; the money is returned on chain after its deadline.
           if (!isHost) throw new Error("only the host can leave");
-          if (game.state !== "lobby") throw new Error("the quiz has started, so it can't be put back");
+          if (game.state !== "lobby") throw new Error("the quiz has started, so it can't be cancelled");
           game.state = "idle";
           game.pot = null;
           game.players.clear();
           game.index = -1;
+          game.payout = null;
           hostWs = null;
           ws.role = undefined;
           return broadcast(snapshot());
@@ -216,6 +218,7 @@ wss.on("connection", (ws) => {
     }
   });
   ws.on("close", () => {
+    clients.delete(ws);
     if (ws === hostWs) hostWs = null;
     else if (ws.role === "player") broadcast(snapshot());
   });

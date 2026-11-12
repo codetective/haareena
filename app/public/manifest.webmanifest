@@ -1,0 +1,16 @@
+{
+  "name": "Haareena",
+  "short_name": "Haareena",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#100b1d",
+  "theme_color": "#100b1d",
+  "icons": [
+    {
+      "src": "/haareena-mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
