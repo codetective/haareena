@@ -62,7 +62,7 @@ const snapshot = () => ({
   title: quiz.title,
   pot: game.pot,
   players: leaderboard(),
-  question: game.state === "question" ? publicQuestion() : null,
+  question: game.state === "question" || game.state === "reveal" ? publicQuestion() : null,
   payout: game.payout,
 });
 const publicQuestion = () => {
@@ -197,6 +197,17 @@ wss.on("connection", (ws) => {
         case "pay":
           if (!isHost) throw new Error("only the host can pay");
           return await onPay();
+        case "leave":
+          // Only before the quiz starts. The pot is untouched; the money is returned on chain after its deadline.
+          if (!isHost) throw new Error("only the host can leave");
+          if (game.state !== "lobby") throw new Error("the quiz has started, so it can't be put back");
+          game.state = "idle";
+          game.pot = null;
+          game.players.clear();
+          game.index = -1;
+          hostWs = null;
+          ws.role = undefined;
+          return broadcast(snapshot());
         default:
           throw new Error("unknown message");
       }
