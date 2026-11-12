@@ -14,3 +14,6 @@ node_modules
 # Vite
 dist
 .env*.local
+
+# Never commit Pollar keys
+keys.md
