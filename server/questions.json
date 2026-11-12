@@ -1,0 +1,31 @@
+{
+  "title": "Stellar Basics",
+  "secondsPerQuestion": 20,
+  "questions": [
+    {
+      "q": "What is the native currency of the Stellar network?",
+      "options": ["ETH", "XLM", "SOL", "USDC"],
+      "answer": 1
+    },
+    {
+      "q": "How many stroops make 1 XLM?",
+      "options": ["100", "1,000,000", "10,000,000", "1,000,000,000"],
+      "answer": 2
+    },
+    {
+      "q": "Which language are Stellar smart contracts written in?",
+      "options": ["Solidity", "Python", "Rust", "Move"],
+      "answer": 2
+    },
+    {
+      "q": "What do Stellar smart contracts compile to?",
+      "options": ["WebAssembly", "EVM bytecode", "Java bytecode", "Native machine code"],
+      "answer": 0
+    },
+    {
+      "q": "What is testnet XLM worth?",
+      "options": ["Same as real XLM", "Half of real XLM", "Nothing, it's free test money", "1 USDC each"],
+      "answer": 2
+    }
+  ]
+}
